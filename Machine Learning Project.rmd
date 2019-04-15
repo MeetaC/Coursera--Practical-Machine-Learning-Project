@@ -1,0 +1,166 @@
+---
+title: "Machine Learning Course Project"
+author: "Meeta Choudhury"
+date: "9 April 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Project Summary
+
+The model build is required to ascertain the quality of exercise that people undertake. The data is obtained from accelerometers on the belt, forearm, arm, and dumbell of 6 research study participants. This data is obtained from devices such as Jawbone Up, Nike FuelBand, and Fitbit, which help health enthusiasts to monitor their activity quality and levels to continously improve their well being.
+
+
+The training data consists of accelerometer data and a labels identifying the quality of the activity the participant was doing, noted under the variable named as 'Classe'. The testing data consists of accelerometer data without the identifying label. The goal is to predict the labels for the test set observations.
+
+# Model Build Steps
+
+Steps involved in bulding the model is as follows:
+
+
+1- Data Loading, Exploratory Analysis and Data cleaning
+2- Predictive Model Building
+3- Model Evaluation and Selection
+4- Making Test set prediction using selected model.
+
+## Step 1- Data Loading, Exploratory Analysis and Data cleaning
+
+```{r}
+library (caret)
+```
+
+Loading traing and testing data
+
+```{r}
+# set the URL for the download
+UrlTrain <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+UrlTest  <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# download the datasets
+training <- read.csv(url(UrlTrain))
+testing  <- read.csv(url(UrlTest))
+
+# create a partition with the training dataset for model development
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+TrainSet <- training[inTrain, ]
+TestSet  <- training[-inTrain, ]
+dim(TrainSet)
+dim(TestSet)
+
+```
+
+
+Once the data is loaded, next step is to clean the data set by removing variables with nearly zero variance, variables that are almost always NA, and variables that don't make intuitive sense for prediction. The required changes are made on the training set and then the same variables are removed from the training set.
+
+
+```{r}
+# remove variables with nearly zero variance
+nzv<- nearZeroVar(TrainSet)
+
+TrainSet <- TrainSet[, -nzv]
+TestSet <- TestSet[, -nzv]
+
+# remove variables that are mostly NA
+AllNA <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.95
+TrainSet <- TrainSet[, AllNA==F]
+TestSet <- TestSet[, AllNA==F]
+
+# remove variables that have no relevance for prediction (eg : X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp), which are the first five variables
+TrainSet <- TrainSet[, -(1:5)]
+TestSet <- TestSet[, -(1:5)]
+
+#Check for number of variables (columns) after the exclusions
+dim(TrainSet)
+dim(TestSet)
+```
+
+## Step 2- Predictive Model Building
+
+Best model fit needs testing multiple model types to ascertain the most accurate one. Hence three methods namely Random Forests, Decision Tree and Generalized Boosted Model, will be applied to model the data (on the Train dataset) and the best one (with higher accuracy when applied to the Test dataset) will be used for the quiz predictions. 
+
+
+**Random Forest**
+
+
+The model is built on the Trainset, and the "train" function is further instructed to use 3-fold cross-validation to select optimal tuning parameters for the model.
+
+```{r}
+# instruct train to use 3-fold CV to select optimal tuning parameters
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+
+# fit model on ptrain1
+fit <- train(classe ~ ., data=TrainSet, method="rf", trControl=fitControl)
+
+# print final model to see tuning parameters it chose
+fit$finalModel
+```
+
+The RF model obtained has 500 trees and 27 varibles at each split. The estimate of error rate is low at 0.21%.
+
+## 3- Model Evaluation and Selection 
+
+Generated model on the training set is then tested on the Testset to ascertain the performance.
+
+```{r}
+# use model to predict classe in validation set (Testdata)
+preds <- predict(fit, newdata=TestSet)
+
+# show confusion matrix to get estimate of out-of-sample error
+confusionMatrix(preds, TestSet$classe)
+
+```
+
+Random Forest Method has generated a model which has a very high accuracy of 99.8% on the out of sample data set. Error rate analogously is at 0.2%. 
+
+The initial model build plan of testing the other 2 model types i.e. Decision Tree and Gradient Boosting Mechanism, is not required therefore in view of the very high accuracy predicted by the random forest method.
+
+
+The final model that will be used to predict the lables on the training set is defined on the complete 'training' set and not the sub segmented data sets namely TrainSet and TestSet. Hence the model needs to be retrained on the complete data set.
+
+**Retraining chosen model on complete training set**
+
+```{r}
+# remove variables with nearly zero variance
+nzv<- nearZeroVar(training)
+
+training <- training[ ,-nzv]
+
+# remove variables that are mostly NA
+AllNA <- sapply(training, function(x) mean(is.na(x))) > 0.95
+training <- training[, AllNA==F]
+
+# remove variables that have no relevance for prediction (eg : X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp), which are the first five variables
+
+training <- training[ ,-(1:5)]
+
+
+# re-fit model using full training set (ptrain)
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+fit <- train(classe ~ ., data=training, method="rf", trControl=fitControl)
+
+```
+
+
+# 4- Making Test set prediction using selected model.
+
+The model obtained above is used to then predict the label for the observations on the 'training' dataset.
+
+```{r}
+# Clean testing data based on the same exclusion criteria in the training dataset.
+
+testing <- testing[ ,-nzv]
+testing <- testing[, AllNA==F]
+testing <- testing[ ,-(1:5)]
+
+
+# predict on test set
+preds <- predict(fit, newdata=testing)
+
+# Final data set with predicted values
+testing_pred <-cbind(testing, preds)
+
+```
+
